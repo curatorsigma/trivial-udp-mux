@@ -1,0 +1,49 @@
+name: "udp-mux-example"
+
+services:
+  mux:
+    build: .
+    ports:
+    - 5442:5442
+    networks:
+      core:
+        ipv4_address: "10.57.0.51"
+    # well-formed COE packets are at most 252 bytes long, so this small buffer is safe.
+    command: "./trivial-udp-mux --bind 10.57.0.51:5442 --max-packet-size 252 --downstream 10.57.0.52:5442 --downstream 10.57.0.53:5442"
+
+  sync:
+    build: https://github.com/curatorsigma/churchtools-ta-sync.git#v0.2.3
+    networks:
+      core:
+        ipv4_address: "10.57.0.52"
+    configs:
+    - source: sync-config
+      target: /etc/ct-ta-sync/config.yaml
+
+  alarm:
+    build: https://github.com/curatorsigma/ta-asterisk-alarm.git#v0.1.1
+    networks:
+      core:
+        ipv4_address: "10.57.0.53"
+    configs:
+    - source: alarm-config
+      target: /etc/ta-asterisk-alarm/config.yaml
+    volumes:
+    - type: bind
+      source: /etc/ssl/ta-asterisk-alarm/
+      target: /etc/ssl/ta-asterisk-alarm/
+      read_only: true
+
+
+networks:
+  core:
+    ipam:
+      config:
+      - subnet: 10.57.0.0/24
+
+configs:
+  alarm-config:
+    file: /etc/ta-asterisk-alarm/config.yaml
+  sync-config:
+    file: /etc/ct-ta-sync/config.yaml
+
