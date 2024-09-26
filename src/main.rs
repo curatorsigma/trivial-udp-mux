@@ -1,18 +1,23 @@
 use std::net::{SocketAddr, UdpSocket};
 
-use serde::Deserialize;
-use serde_yaml::from_reader;
+use clap::Parser;
 
-#[derive(Deserialize)]
-pub struct Config {
-    pub bind_addr: String,
-    pub bind_port: u16,
-    pub max_packet_size: Option<usize>,
-    pub downstreams: Vec<SocketAddr>,
+#[derive(Parser,Debug)]
+#[command(version, about, long_about = None)]
+struct Config {
+    /// Bind to this socket (ip:port)
+    #[arg(short, long)]
+    bind: SocketAddr,
+    /// Downstreams to mux packets to (host:port)
+    #[arg(short, long)]
+    downstream: Vec<SocketAddr>,
+    /// Truncate packets at this number of bytes
+    #[arg(long, default_value_t = u16::MAX as usize)]
+    max_packet_size: usize,
 }
 
-fn forward_packet(config: &Config, socket: &UdpSocket, buf: &Vec<u8>) -> Result<(), std::io::Error> {
-    for downstream in &config.downstreams {
+fn forward_packet(config: &Config, socket: &UdpSocket, buf: &[u8]) -> Result<(), std::io::Error> {
+    for downstream in &config.downstream {
         match socket.send_to(buf, downstream) {
             Ok(_bytes_read) => {}
             Err(e) => {
@@ -24,16 +29,15 @@ fn forward_packet(config: &Config, socket: &UdpSocket, buf: &Vec<u8>) -> Result<
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let conf_reader = std::fs::File::open("/etc/trivial_udp_mux/config.yaml")?;
-    let config: Config = from_reader(conf_reader)?;
+    let config = Config::parse();
 
     println!("Starting the trivial udp muxer.");
-    let mut buf = vec![0_u8; config.max_packet_size.unwrap_or(usize::from(u16::MAX))];
-    let listener_socket = UdpSocket::bind(format!("{}:{}", config.bind_addr, config.bind_port))?;
+    let mut buf = vec![0_u8; config.max_packet_size];
+    let listener_socket = UdpSocket::bind(config.bind)?;
     loop {
         match listener_socket.recv(&mut buf) {
-            Ok(_bytes_read) => {
-                match forward_packet(&config, &listener_socket, &buf) {
+            Ok(bytes_read) => {
+                match forward_packet(&config, &listener_socket, &buf[..bytes_read]) {
                     Ok(()) => {}
                     Err(e) => {
                         eprintln!("Received a UDP packet, but failed to forward it to all downstreams: {e}.");

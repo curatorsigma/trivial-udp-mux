@@ -1,6 +1,0 @@
-bind_addr: "0.0.0.0"
-bind_port: 5442
-max_packet_size: 252
-downstreams:
-  - "192.168.1.123:5442"
-  - "192.168.1.124:5442"
